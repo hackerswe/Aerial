@@ -13,7 +13,7 @@ from functools import partial
 
 # Logging #
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format="%(asctime)s %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -231,7 +231,6 @@ async def start_bot(member: discord.Member, time: int):
             )
         else:
             if str(reaction.emoji) == "<:Accept:719047548219949136>":
-                await friend.accept()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -240,8 +239,8 @@ async def start_bot(member: discord.Member, time: int):
                         color=0x43b581
                     )
                 )
+                await friend.accept()
             elif str(reaction.emoji) == "<:Reject:719047548819472446>":
-                await friend.decline()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -250,6 +249,8 @@ async def start_bot(member: discord.Member, time: int):
                         color=0xf24949
                     )
                 )
+                await friend.decline()
+
 
     @client.event
     async def event_party_invite(invitation: fortnitepy.ReceivedPartyInvitation):
@@ -271,7 +272,6 @@ async def start_bot(member: discord.Member, time: int):
         try:
             reaction, user = await dclient.wait_for("reaction_add", timeout=60.0, check=check)
         except asyncio.exceptions.TimeoutError:
-            await invitation.decline()
             await rmsg.edit(
                 delete_after=1,
                 embed=discord.Embed(
@@ -280,9 +280,9 @@ async def start_bot(member: discord.Member, time: int):
                     color=0xf24949
                 )
             )
+            await invitation.decline()
         else:
             if str(reaction.emoji) == "<:Accept:719047548219949136>":
-                await invitation.accept()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -291,8 +291,8 @@ async def start_bot(member: discord.Member, time: int):
                         color=0x43b581
                     )
                 )
+                await invitation.accept()
             elif str(reaction.emoji) == "<:Reject:719047548819472446>":
-                await invitation.decline()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -301,6 +301,7 @@ async def start_bot(member: discord.Member, time: int):
                         color=0xf24949
                     )
                 )
+                await invitation.decline()
     loop.create_task(client.start())
     await client.wait_until_ready()
     for f in list(client.friends.values()):
@@ -322,7 +323,7 @@ async def start_bot(member: discord.Member, time: int):
             ]
         )
     )
-    await message.edit(
+    message2 = await message.channel.send(
         embed=discord.Embed(
             title="<:Online:719038976677380138> " + client.user.display_name,
             type="rich",
@@ -331,6 +332,8 @@ async def start_bot(member: discord.Member, time: int):
             url=get_cosmetic_by_id(client.party.me.outfit)['icons']['icon']
         )
     )
+    await message.delete()
+    messages[client] = message2
     hook.send(":heavy_plus_sign: " + member.mention + " is now using the bot (" + client.user.display_name + ")")
     await message.channel.send(content="Documentation is available here: **<https://aerial.now.sh/>**", delete_after=120)
     tasks[client] = loop.call_later(
