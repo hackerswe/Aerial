@@ -10,6 +10,7 @@ import sys
 import logging
 import signal
 from functools import partial
+from discord.ext import commands
 
 # Logging #
 logging.basicConfig(
@@ -98,7 +99,9 @@ sys.excepthook = excepthook
 loop = asyncio.get_event_loop()
 
 # Discord Client #
-dclient = discord.Client(
+dclient = commands.AutoShardedBot(
+    command_prefix="a.",
+    help_command=None,
     activity=discord.Streaming(
         platform="Twitch",
         name="256 Fortnite Bots",
@@ -119,16 +122,22 @@ def shutdown():
 async def refresh_count():
     channel = dclient.get_channel(720787276329910363)
     membercount = dclient.get_channel(727141497081954364)
+    guildcount = dclient.get_channel(727599283179749466)
     while True:
         name = str(len(owner)) + "/" + str(len(clients)) + " Clients Running"
         if name != channel.name:
             await channel.edit(
                 name=name
             )
-        counter = str(dclient.get_guild(718842309998805022).member_count) + " Members"
-        if counter != membercount.name:
+        membercounter = str(dclient.get_guild(718842309998805022).member_count) + " Members"
+        if membercounter != membercount.name:
             await membercount.edit(
-                name=counter
+                name=membercounter
+            )
+        guildcounter = str(len(dclient.guilds)) + " Guilds"
+        if guildcounter != guildcount.name:
+            await guildcount.edit(
+                name=guildcounter
             )
         await asyncio.sleep(600)
 
@@ -153,7 +162,10 @@ async def stop_bot(client: fortnitepy.Client, ownerid: int, text: str = None):
     for f in list(client.pending_friends.values()):
         await f.decline()
     name = client.user.display_name
-    await client.close()
+    try:
+        await client.close()
+    except:
+        pass
     available[name] = client
     owner.pop(ownerid)
     task = tasks.get(client, None)
@@ -198,10 +210,15 @@ async def start_bot(member: discord.Member, time: int):
         messages[client] = message
 
     @client.event
+    async def event_close():
+        await stop_bot(client, member.id, "This bot was shutdown on request.")
+        return
+
+    @client.event
     async def event_friend_request(friend: fortnitepy.PendingFriend):
         if friend.direction != "INBOUND":
             return
-        rmsg = await member.send(
+        rmsg = await message.channel.send(
             embed=discord.Embed(
                 title="<:FriendRequest:719042256849338429> Friend Request from " + friend.display_name,
                 type="rich",
@@ -251,10 +268,9 @@ async def start_bot(member: discord.Member, time: int):
                 )
                 await friend.decline()
 
-
     @client.event
     async def event_party_invite(invitation: fortnitepy.ReceivedPartyInvitation):
-        rmsg = await member.send(
+        rmsg = await message.channel.send(
             embed=discord.Embed(
                 title="<:PartyInvite:719198827281645630> Party Invite from " + invitation.sender.display_name,
                 type="rich",
@@ -338,7 +354,7 @@ async def start_bot(member: discord.Member, time: int):
     await message.channel.send(content="Documentation is available here: **<https://aerial.now.sh/>**", delete_after=120)
     tasks[client] = loop.call_later(
         time,
-        loop.create_task,
+        asyncio.create_task,
         stop_bot(
             client,
             member.id,
@@ -533,7 +549,7 @@ async def parse_command(message: discord.Message):
                         **variants
                     )
                 ))
-                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + msg[3] + " = " + msg[4], delete_after=10)
+                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + variants, delete_after=10)
             elif msg[2].lower() == "backbling" or msg[2].lower() == "backpack":
                 await client.party.me.edit_and_keep(partial(client.party.me.set_backpack,
                     asset=client.party.me.backpack,
@@ -542,7 +558,7 @@ async def parse_command(message: discord.Message):
                         **variants
                     )
                 ))
-                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + msg[3] + " = " + msg[4], delete_after=10)
+                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + variants, delete_after=10)
             elif msg[2].lower() == "harvesting_tool" or msg[2].lower() == "harvestingtool" or msg[2].lower() == "pickaxe":
                 await client.party.me.edit_and_keep(partial(client.party.me.set_pickaxe,
                     asset=client.party.me.pickaxe,
@@ -551,7 +567,7 @@ async def parse_command(message: discord.Message):
                         **variants
                     )
                 ))
-                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + msg[3] + " = " + msg[4], delete_after=10)
+                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + variants, delete_after=10)
         elif msg[1].lower() == "enlightenment" or msg[1].lower() == "enlighten":
             if msg[2].lower() == "outfit" or msg[2].lower() == "skin":
                 await client.party.me.edit_and_keep(partial(client.party.me.set_outfit,
@@ -675,6 +691,7 @@ async def parse_command(message: discord.Message):
                     inline=True
                 )
             await message.channel.send(embed=embed, delete_after=300)
+    return True
 
 
 ###################
@@ -699,6 +716,17 @@ async def on_message(message: discord.Message):
             await message.delete()
     elif type(message.channel) == discord.DMChannel:
         await parse_command(message)
+
+
+@dclient.command()
+async def create(ctx):
+    try:
+        await ctx.message.delete()
+    except discord.Forbidden:
+        pass
+    await start_bot(ctx.message.author, 1800)
+
+
 for a in accounts:
     auth = fortnitepy.AdvancedAuth(
         email=accounts[a]['Email'],
