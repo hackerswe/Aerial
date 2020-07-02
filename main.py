@@ -8,6 +8,7 @@ import random
 import requests
 import sys
 import logging
+import smtplib
 from functools import partial
 
 # Logging #
@@ -65,6 +66,7 @@ available = {}
 owner = {}
 messages = {}
 tasks = {}
+status = os.getenv("STATUSPAGE")
 hook = discord.Webhook.from_url(
     os.getenv("EXCEPTHOOK"),
     adapter=discord.RequestsWebhookAdapter()
@@ -201,7 +203,7 @@ async def start_bot(member: discord.Member, time: int):
 
     @client.event
     async def event_friend_request(friend: fortnitepy.PendingFriend):
-        if friend.direction != "INBOUND":
+        if friend.direction != "INBOUND" or member.id not in list(owner.keys()):
             return
         rmsg = await message.channel.send(
             embed=discord.Embed(
@@ -255,6 +257,8 @@ async def start_bot(member: discord.Member, time: int):
 
     @client.event
     async def event_party_invite(invitation: fortnitepy.ReceivedPartyInvitation):
+        if member.id not in list(owner.keys()):
+            return
         rmsg = await message.channel.send(
             embed=discord.Embed(
                 title="<:PartyInvite:719198827281645630> Party Invite from " + invitation.sender.display_name,
@@ -309,12 +313,13 @@ async def start_bot(member: discord.Member, time: int):
         del event_friend_request
         del event_party_invite
 
-    try:
-        loop.create_task(client.start())
-    except:
-        await stop_bot(client, member.id, "An error occured while starting the bot. Please try again.")
+    loop.create_task(client.start())
 
-    await client.wait_until_ready()
+    try:
+        await asyncio.wait_for(client.wait_until_ready(), timeout=30.0)
+    except asyncio.exceptions.TimeoutError:
+        await stop_bot(client, member.id, "An error occured while starting the bot. Please try again.")
+        return
     for f in list(client.friends.values()):
         await f.remove()
     for f in list(client.pending_friends.values()):
