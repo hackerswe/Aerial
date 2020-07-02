@@ -8,13 +8,11 @@ import random
 import requests
 import sys
 import logging
-import signal
 from functools import partial
-from discord.ext import commands
 
 # Logging #
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format="%(asctime)s %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -99,9 +97,7 @@ sys.excepthook = excepthook
 loop = asyncio.get_event_loop()
 
 # Discord Client #
-dclient = commands.AutoShardedBot(
-    command_prefix="a.",
-    help_command=None,
+dclient = discord.Client(
     activity=discord.Streaming(
         platform="Twitch",
         name="256 Fortnite Bots",
@@ -113,12 +109,6 @@ dclient = commands.AutoShardedBot(
 
 
 # Bot Functions #
-def shutdown():
-    for ownerid in owner:
-        loop.create_task(stop_bot(owner[ownerid], ownerid, "All bots have been stopped by the server."))
-    loop.create_task(dclient.close())
-
-
 async def refresh_count():
     channel = dclient.get_channel(720787276329910363)
     membercount = dclient.get_channel(727141497081954364)
@@ -208,11 +198,6 @@ async def start_bot(member: discord.Member, time: int):
         available.pop(name)
         owner[member.id] = client
         messages[client] = message
-
-    @client.event
-    async def event_close():
-        await stop_bot(client, member.id, "This bot was shutdown on request.")
-        return
 
     @client.event
     async def event_friend_request(friend: fortnitepy.PendingFriend):
@@ -318,7 +303,17 @@ async def start_bot(member: discord.Member, time: int):
                     )
                 )
                 await invitation.decline()
-    loop.create_task(client.start())
+
+    @client.event
+    async def event_close():
+        del event_friend_request
+        del event_party_invite
+
+    try:
+        loop.create_task(client.start())
+    except:
+        await stop_bot(client, member.id, "An error occured while starting the bot. Please try again.")
+
     await client.wait_until_ready()
     for f in list(client.friends.values()):
         await f.remove()
@@ -354,7 +349,7 @@ async def start_bot(member: discord.Member, time: int):
     await message.channel.send(content="Documentation is available here: **<https://aerial.now.sh/>**", delete_after=120)
     tasks[client] = loop.call_later(
         time,
-        asyncio.create_task,
+        loop.create_task,
         stop_bot(
             client,
             member.id,
@@ -371,7 +366,7 @@ async def parse_command(message: discord.Message):
         return
     client = owner[message.author.id]
     if msg[0].lower() == "stop" or msg[0].lower() == "logout":
-        await stop_bot(client, message.author.id)
+        await stop_bot(client, message.author.id, "You requested the bot to shutdown.")
     elif msg[0].lower() == "restart" or msg[0].lower() == "reboot":
         restartmsg = await message.channel.send(content="<a:Queue:720808283740569620> Restarting...")
         await client.restart()
@@ -549,7 +544,7 @@ async def parse_command(message: discord.Message):
                         **variants
                     )
                 ))
-                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + variants, delete_after=10)
+                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + str(variants), delete_after=10)
             elif msg[2].lower() == "backbling" or msg[2].lower() == "backpack":
                 await client.party.me.edit_and_keep(partial(client.party.me.set_backpack,
                     asset=client.party.me.backpack,
@@ -558,7 +553,7 @@ async def parse_command(message: discord.Message):
                         **variants
                     )
                 ))
-                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + variants, delete_after=10)
+                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + str(variants), delete_after=10)
             elif msg[2].lower() == "harvesting_tool" or msg[2].lower() == "harvestingtool" or msg[2].lower() == "pickaxe":
                 await client.party.me.edit_and_keep(partial(client.party.me.set_pickaxe,
                     asset=client.party.me.pickaxe,
@@ -567,7 +562,7 @@ async def parse_command(message: discord.Message):
                         **variants
                     )
                 ))
-                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + variants, delete_after=10)
+                await message.channel.send("<:Accept:719047548219949136> Set Variants to " + str(variants), delete_after=10)
         elif msg[1].lower() == "enlightenment" or msg[1].lower() == "enlighten":
             if msg[2].lower() == "outfit" or msg[2].lower() == "skin":
                 await client.party.me.edit_and_keep(partial(client.party.me.set_outfit,
@@ -704,6 +699,7 @@ loop.create_task(dclient.start(os.getenv("TOKEN")))
 @dclient.event
 async def on_ready():
     await refresh_count()
+    return
 
 
 @dclient.event
@@ -716,15 +712,7 @@ async def on_message(message: discord.Message):
             await message.delete()
     elif type(message.channel) == discord.DMChannel:
         await parse_command(message)
-
-
-@dclient.command()
-async def create(ctx):
-    try:
-        await ctx.message.delete()
-    except discord.Forbidden:
-        pass
-    await start_bot(ctx.message.author, 1800)
+    return
 
 
 for a in accounts:
@@ -742,8 +730,6 @@ for a in accounts:
     clients[a] = client
     available[a] = client
 
-for s in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT):
-    loop.add_signal_handler(s, shutdown)
 
 loop.set_exception_handler(loopexcepthook)
 loop.run_forever()

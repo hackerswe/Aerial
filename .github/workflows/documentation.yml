@@ -22,7 +22,7 @@ jobs:
       
       - name: Execute Discord Webhook
         run: |
-          curl --silent --location --request POST 'https://discordapp.com/api/webhooks/726465773962265139/DYhs1kdhtRmR5j1CUW-n6Ehkbbk7WyI4eYaekak0vsNw0VdoOVtDjxrkSgW2i6Mhth0t' \
+          curl --silent --location --request POST 'https://discordapp.com/api/webhooks/726465773962265139/${{ secrets.WEBHOOK }}' \
           --header 'Content-Type: application/json' \
           --header 'Cookie: __cfduid=d6f204fbc38071d06933939fe01bab66a1593273977' \
           --data-raw '{
