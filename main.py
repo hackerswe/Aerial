@@ -8,7 +8,6 @@ import random
 import requests
 import sys
 import logging
-import smtplib
 from functools import partial
 from discord.ext import commands
 
@@ -66,7 +65,8 @@ clients = {}
 available = {}
 owner = {}
 messages = {}
-tasks = {}
+shutdowntasks = {}
+startuptasks = {}
 status = os.getenv("STATUSPAGE")
 hook = discord.Webhook.from_url(
     os.getenv("EXCEPTHOOK"),
@@ -96,12 +96,12 @@ def loopexcepthook(loop, context):
     return True
 
 
-sys.excepthook = excepthook
 loop = asyncio.get_event_loop()
 
 # Discord Client #
 dclient = commands.AutoShardedBot(
-    prefix="a.",
+    command_prefix="a.",
+    help_command=None,
     activity=discord.Streaming(
         platform="Twitch",
         name="Fortnite Bots",
@@ -145,28 +145,37 @@ async def refresh_message(client: fortnitepy.Client):
             color=0xfc5fe2
         ).set_thumbnail(
             url=get_cosmetic_by_id(client.party.me.outfit)['icons']['icon']
-        ).set_footer(
-            text="Discord Server: https://discord.gg/r7DHHfY"
+        ).add_field(
+            name="Discord Server",
+            value="https://discord.gg/r7DHHfY",
+            inline=True
         )
     )
 
 
-async def stop_bot(client: fortnitepy.Client, ownerid: int, text: str = None):
-    await client.wait_until_ready()
+async def stop_bot(client: fortnitepy.Client, ownerid: int, text: str = None, delay: int = 0):
+    await asyncio.sleep(delay)
+    try:
+        await asyncio.wait_for(client.wait_until_ready(), timeout=10.0)
+    except asyncio.TimeoutError:
+        pass
     for f in list(client.friends.values()):
         await f.remove()
     for f in list(client.pending_friends.values()):
         await f.decline()
     name = client.user.display_name
     try:
-        await client.close()
+        await asyncio.wait_for(client.close(), timeout=30.0)
     except:
         pass
     available[name] = client
     owner.pop(ownerid)
-    task = tasks.get(client, None)
-    if task is not None:
-        task.cancel()
+    shutdowntask = shutdowntasks.get(client, None)
+    if shutdowntask is not None:
+        shutdowntask.cancel()
+    startuptask = startuptasks.get(client, None)
+    if startuptask is not None:
+        startuptask.cancel()
     await messages[client].edit(
         embed=discord.Embed(
             title="<:Offline:719321200098017330> Bot Offline",
@@ -227,7 +236,7 @@ async def start_bot(member: discord.Member, time: int):
 
         try:
             reaction, user = await dclient.wait_for("reaction_add", timeout=60.0, check=check)
-        except asyncio.exceptions.TimeoutError:
+        except asyncio.TimeoutError:
             await friend.decline()
             await rmsg.edit(
                 delete_after=1,
@@ -280,7 +289,7 @@ async def start_bot(member: discord.Member, time: int):
                 return False
         try:
             reaction, user = await dclient.wait_for("reaction_add", timeout=60.0, check=check)
-        except asyncio.exceptions.TimeoutError:
+        except asyncio.TimeoutError:
             await rmsg.edit(
                 delete_after=1,
                 embed=discord.Embed(
@@ -321,8 +330,8 @@ async def start_bot(member: discord.Member, time: int):
 
     try:
         await asyncio.wait_for(client.wait_until_ready(), timeout=30.0)
-    except asyncio.exceptions.TimeoutError:
-        await stop_bot(client, member.id, "An error occured while starting the bot. Please try again.")
+    except asyncio.TimeoutError:
+        await stop_bot(client, member.id, "An error occured while starting the bot. Please try again.", 0)
         return
     for f in list(client.friends.values()):
         await f.remove()
@@ -350,21 +359,22 @@ async def start_bot(member: discord.Member, time: int):
             color=0xfc5fe2
         ).set_thumbnail(
             url=get_cosmetic_by_id(client.party.me.outfit)['icons']['icon']
-        ).set_footer(
-            text="Discord Server: https://discord.gg/r7DHHfY"
+        ).add_field(
+            name="Discord Server",
+            value="https://discord.gg/r7DHHfY",
+            inline=True
         )
     )
     await message.delete()
     messages[client] = message2
     hook.send(":heavy_plus_sign: " + member.mention + " is now using the bot (" + client.user.display_name + ")")
     await message.channel.send(content="Documentation is available here: **<https://aerial.now.sh/>**", delete_after=120)
-    tasks[client] = loop.call_later(
-        time,
-        loop.create_task,
+    shutdowntasks[client] = loop.create_task(
         stop_bot(
             client,
             member.id,
-            "This bot automatically shuts down after " + str(time / 60) + " minutes."
+            "This bot automatically shuts down after " + str(time / 60) + " minutes.",
+            time
         )
     )
 
@@ -377,14 +387,14 @@ async def parse_command(message: discord.Message):
         return
     client = owner[message.author.id]
     if msg[0].lower() == "stop" or msg[0].lower() == "logout":
-        await stop_bot(client, message.author.id, "You requested the bot to shutdown.")
+        await stop_bot(client, message.author.id, "You requested the bot to shutdown.", 0)
     elif msg[0].lower() == "restart" or msg[0].lower() == "reboot":
         restartmsg = await message.channel.send(content="<a:Queue:720808283740569620> Restarting...")
         try:
             await asyncio.wait_for(client.restart(), timeout=30.0)
             await restartmsg.edit(content="<:Accept:719047548219949136> Restarted!", delete_after=10)
-        except asyncio.exceptions.TimeoutError:
-            await stop_bot(client, message.author.id, "Something went wrong while restarting. Your bot has been shut down.")
+        except asyncio.TimeoutError:
+            await stop_bot(client, message.author.id, "Something went wrong while restarting. Your bot has been shut down.", 0)
             await restartmsg.edit(content="<:Reject:719047548819472446> Something went wrong while restarting. Your bot has been shut down.", delete_after=20)
     elif msg[0].lower() == "help":
         await message.channel.send(content="Documentation is available here: **<https://aerial.now.sh/>**", delete_after=10)
@@ -726,7 +736,8 @@ async def on_message(message: discord.Message):
             await message.delete()
     elif type(message.channel) == discord.DMChannel:
         await parse_command(message)
-    return
+    else:
+        await dclient.process_commands(message)
 
 
 @dclient.command(name="create", aliases=["start", "startbot", "createbot"])
@@ -737,25 +748,44 @@ async def create(ctx):
         pass
     await start_bot(ctx.author, 1800)
 
-i = 0
+
+@dclient.command(name="kill", aliases=["stop", "end"])
+async def kill(ctx):
+    if ctx.author.id not in list(owner.keys()):
+        await ctx.send(":x: No Active Session Found!")
+        return
+    try:
+        await ctx.send(ctx.author.mention + "Attempting to kill session... (Timeout of 60 seconds)")
+        await asyncio.wait_for(
+            stop_bot(
+                owner[ctx.author.id],
+                ctx.author.id,
+                "The bot was killed via `a.kill`",
+                0
+            ), timeout=60.0)
+        await ctx.send(":white_check_mark: Killed Session!")
+    except asyncio.TimeoutError:
+        await ctx.send(ctx.author.mention + ":x: Could not kill session. Maybe try again? (TimeoutError)")
+    except:
+        await ctx.send(ctx.author.mention + ":x: Could not kill session. Maybe try again? (UnknownError)")
+
+
+accounts = dict(list(accounts.items())[len(accounts)//2:])
 
 for a in accounts:
-    if i == 0:
-        auth = fortnitepy.AdvancedAuth(
-            email=accounts[a]['Email'],
-            password=accounts[a]['Password'],
-            account_id=accounts[a]['Account ID'],
-            device_id=accounts[a]['Device ID'],
-            secret=accounts[a]['Secret']
-        )
-        client = fortnitepy.Client(
-            auth=auth,
-            platform=fortnitepy.Platform.MAC
-        )
-        clients[a] = client
-        available[a] = client
-    elif i == 1:
-        i = 0
+    auth = fortnitepy.AdvancedAuth(
+        email=accounts[a]['Email'],
+        password=accounts[a]['Password'],
+        account_id=accounts[a]['Account ID'],
+        device_id=accounts[a]['Device ID'],
+        secret=accounts[a]['Secret']
+    )
+    client = fortnitepy.Client(
+        auth=auth,
+        platform=fortnitepy.Platform.MAC
+    )
+    clients[a] = client
+    available[a] = client
 
 
 loop.set_exception_handler(loopexcepthook)
