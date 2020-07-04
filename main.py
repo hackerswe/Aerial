@@ -10,6 +10,7 @@ import sys
 import logging
 import smtplib
 from functools import partial
+from discord.ext import commands
 
 # Logging #
 logging.basicConfig(
@@ -99,12 +100,13 @@ sys.excepthook = excepthook
 loop = asyncio.get_event_loop()
 
 # Discord Client #
-dclient = discord.Client(
+dclient = commands.AutoShardedBot(
+    prefix="a.",
     activity=discord.Streaming(
         platform="Twitch",
-        name="256 Fortnite Bots",
-        details="256 Fortnite Bots",
-        game="256 Fortnite Bots",
+        name="Fortnite Bots",
+        details="Fortnite Bots",
+        game="Fortnite Bots",
         url="https://twitch.tv/andre4ik3"
     )
 )
@@ -143,6 +145,8 @@ async def refresh_message(client: fortnitepy.Client):
             color=0xfc5fe2
         ).set_thumbnail(
             url=get_cosmetic_by_id(client.party.me.outfit)['icons']['icon']
+        ).set_footer(
+            text="Discord Server: https://discord.gg/r7DHHfY"
         )
     )
 
@@ -346,6 +350,8 @@ async def start_bot(member: discord.Member, time: int):
             color=0xfc5fe2
         ).set_thumbnail(
             url=get_cosmetic_by_id(client.party.me.outfit)['icons']['icon']
+        ).set_footer(
+            text="Discord Server: https://discord.gg/r7DHHfY"
         )
     )
     await message.delete()
@@ -358,7 +364,7 @@ async def start_bot(member: discord.Member, time: int):
         stop_bot(
             client,
             member.id,
-            "This bot automatically shuts down after 90 minutes."
+            "This bot automatically shuts down after " + str(time / 60) + " minutes."
         )
     )
 
@@ -374,9 +380,12 @@ async def parse_command(message: discord.Message):
         await stop_bot(client, message.author.id, "You requested the bot to shutdown.")
     elif msg[0].lower() == "restart" or msg[0].lower() == "reboot":
         restartmsg = await message.channel.send(content="<a:Queue:720808283740569620> Restarting...")
-        await client.restart()
-        await client.wait_until_ready()
-        await restartmsg.edit(content="<:Accept:719047548219949136> Restarted!", delete_after=10)
+        try:
+            await asyncio.wait_for(client.restart(), timeout=30.0)
+            await restartmsg.edit(content="<:Accept:719047548219949136> Restarted!", delete_after=10)
+        except asyncio.exceptions.TimeoutError:
+            await stop_bot(client, message.author.id, "Something went wrong while restarting. Your bot has been shut down.")
+            await restartmsg.edit(content="<:Reject:719047548819472446> Something went wrong while restarting. Your bot has been shut down.", delete_after=20)
     elif msg[0].lower() == "help":
         await message.channel.send(content="Documentation is available here: **<https://aerial.now.sh/>**", delete_after=10)
     elif msg[0].lower() == "ready":
@@ -720,20 +729,33 @@ async def on_message(message: discord.Message):
     return
 
 
+@dclient.command(name="create", aliases=["start", "startbot", "createbot"])
+async def create(ctx):
+    try:
+        await ctx.message.delete()
+    except discord.Forbidden:
+        pass
+    await start_bot(ctx.author, 1800)
+
+i = 0
+
 for a in accounts:
-    auth = fortnitepy.AdvancedAuth(
-        email=accounts[a]['Email'],
-        password=accounts[a]['Password'],
-        account_id=accounts[a]['Account ID'],
-        device_id=accounts[a]['Device ID'],
-        secret=accounts[a]['Secret']
-    )
-    client = fortnitepy.Client(
-        auth=auth,
-        platform=fortnitepy.Platform.MAC
-    )
-    clients[a] = client
-    available[a] = client
+    if i == 0:
+        auth = fortnitepy.AdvancedAuth(
+            email=accounts[a]['Email'],
+            password=accounts[a]['Password'],
+            account_id=accounts[a]['Account ID'],
+            device_id=accounts[a]['Device ID'],
+            secret=accounts[a]['Secret']
+        )
+        client = fortnitepy.Client(
+            auth=auth,
+            platform=fortnitepy.Platform.MAC
+        )
+        clients[a] = client
+        available[a] = client
+    elif i == 1:
+        i = 0
 
 
 loop.set_exception_handler(loopexcepthook)
