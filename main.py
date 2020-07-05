@@ -8,12 +8,14 @@ import random
 import requests
 import sys
 import logging
+import aiohttp
 from functools import partial
 from discord.ext import commands
 
 # Logging #
 logging.basicConfig(
     level=logging.INFO,
+    filename="aerial.log",
     format="%(asctime)s %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -85,17 +87,6 @@ def excepthook(exctype, value, tb):
     )
 
 
-def loopexcepthook(loop, context):
-    hook.send(
-        embed=discord.Embed(
-            title="Loop Exception",
-            type="rich",
-            description=str(context['message']) + "\n\n" + context.get("exception", "")
-        )
-    )
-    return True
-
-
 loop = asyncio.get_event_loop()
 
 # Discord Client #
@@ -163,12 +154,11 @@ async def stop_bot(client: fortnitepy.Client, ownerid: int, text: str = None, de
         await f.remove()
     for f in list(client.pending_friends.values()):
         await f.decline()
-    name = client.user.display_name
     try:
         await asyncio.wait_for(client.close(), timeout=30.0)
     except:
         pass
-    available[name] = client
+    available[client.name] = client
     owner.pop(ownerid)
     shutdowntask = shutdowntasks.get(client, None)
     if shutdowntask is not None:
@@ -722,15 +712,36 @@ loop.create_task(dclient.start(os.getenv("TOKEN")))
 
 @dclient.event
 async def on_ready():
-    await refresh_count()
-    return
+    channel = dclient.get_channel(720787276329910363)
+    membercount = dclient.get_channel(727141497081954364)
+    guildcount = dclient.get_channel(727599283179749466)
+    while True:
+        name = str(len(owner)) + "/" + str(len(clients)) + " Clients Running"
+        if name != channel.name:
+            await channel.edit(
+                name=name
+            )
+            membercounter = str(dclient.get_guild(718842309998805022).member_count) + " Members"
+            if membercounter != membercount.name:
+                await membercount.edit(
+                    name=membercounter
+                )
+                guildcounter = str(len(dclient.guilds)) + " Guilds"
+                if guildcounter != guildcount.name:
+                    await guildcount.edit(
+                        name=guildcounter
+                    )
+        await asyncio.sleep(300)
 
 
 @dclient.event
 async def on_message(message: discord.Message):
     if message.channel.id == 718979003968520283:
         if "start" in message.content.lower():
-            await message.delete()
+            try:
+                await message.delete()
+            except:
+                pass
             await start_bot(message.author, 5400)
         else:
             await message.delete()
@@ -770,7 +781,6 @@ async def kill(ctx):
         await ctx.send(ctx.author.mention + ":x: Could not kill session. Maybe try again? (UnknownError)")
 
 
-accounts = dict(list(accounts.items())[len(accounts)//2:])
 
 for a in accounts:
     auth = fortnitepy.AdvancedAuth(
@@ -782,11 +792,12 @@ for a in accounts:
     )
     client = fortnitepy.Client(
         auth=auth,
-        platform=fortnitepy.Platform.MAC
+        platform=fortnitepy.Platform.MAC,
+        connector=aiohttp.TCPConnector(limit=None)
     )
+    client.name = a
     clients[a] = client
     available[a] = client
 
 
-loop.set_exception_handler(loopexcepthook)
 loop.run_forever()
