@@ -1,3 +1,7 @@
+# Files #
+import aerial
+
+# Modules #
 import os
 import discord
 import fortnitepy
@@ -8,7 +12,6 @@ import random
 import requests
 import sys
 import logging
-import aiohttp
 from functools import partial
 from discord.ext import commands
 
@@ -16,7 +19,7 @@ from discord.ext import commands
 logging.basicConfig(
     level=logging.INFO,
     filename="aerial.log",
-    format="%(asctime)s %(levelname)s: %(message)s",
+    format="[%(asctime)s] [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
 
@@ -25,36 +28,6 @@ if os.path.isfile("accounts.yml"):
     accounts = yaml.safe_load(open("accounts.yml"))
 else:
     sys.exit("Cannot Load accounts.yml!")
-
-
-# API Functions #
-def get_cosmetic(name: str, backendType: str = ""):
-    return requests.get(
-        "https://benbotfn.tk/api/v1/cosmetics/br/search",
-        params={
-            "lang": "en",
-            "searchLang": "en",
-            "matchMethod": "contains",
-            "backendType": backendType,
-            "name": name
-        }
-    ).json()
-
-
-def get_cosmetic_by_id(id: str):
-    r = requests.get(
-        "https://benbotfn.tk/api/v1/cosmetics/br/" + id
-    )
-    return r.json() if r.status_code != 404 else None
-
-
-def get_playlist(name: str):
-    return requests.get(
-        "https://scuffedapi.xyz/api/playlists/search",
-        params={
-            "displayName": name
-        }
-    ).json()
 
 
 def convert(ls: list):
@@ -67,8 +40,6 @@ clients = {}
 available = {}
 owner = {}
 messages = {}
-shutdowntasks = {}
-startuptasks = {}
 status = os.getenv("STATUSPAGE")
 hook = discord.Webhook.from_url(
     os.getenv("EXCEPTHOOK"),
@@ -104,30 +75,7 @@ dclient = commands.AutoShardedBot(
 
 
 # Bot Functions #
-async def refresh_count():
-    channel = dclient.get_channel(720787276329910363)
-    membercount = dclient.get_channel(727141497081954364)
-    guildcount = dclient.get_channel(727599283179749466)
-    while True:
-        name = str(len(owner)) + "/" + str(len(clients)) + " Clients Running"
-        if name != channel.name:
-            await channel.edit(
-                name=name
-            )
-        membercounter = str(dclient.get_guild(718842309998805022).member_count) + " Members"
-        if membercounter != membercount.name:
-            await membercount.edit(
-                name=membercounter
-            )
-        guildcounter = str(len(dclient.guilds)) + " Guilds"
-        if guildcounter != guildcount.name:
-            await guildcount.edit(
-                name=guildcounter
-            )
-        await asyncio.sleep(600)
-
-
-async def refresh_message(client: fortnitepy.Client):
+async def refresh_message(client: aerial.DisposableClient):
     message = messages[client]
     await message.edit(
         embed=discord.Embed(
@@ -135,7 +83,7 @@ async def refresh_message(client: fortnitepy.Client):
             type="rich",
             color=0xfc5fe2
         ).set_thumbnail(
-            url=get_cosmetic_by_id(client.party.me.outfit)['icons']['icon']
+            url=aerial.cosmetic(client.party.me.outfit, "AthenaCharacter")['icons']['icon']
         ).add_field(
             name="Discord Server",
             value="https://discord.gg/r7DHHfY",
@@ -144,28 +92,21 @@ async def refresh_message(client: fortnitepy.Client):
     )
 
 
-async def stop_bot(client: fortnitepy.Client, ownerid: int, text: str = None, delay: int = 0):
+async def stop_bot(client: aerial.DisposableClient, ownerid: int, text: str = None, delay: int = 0):
+
     await asyncio.sleep(delay)
-    try:
-        await asyncio.wait_for(client.wait_until_ready(), timeout=10.0)
-    except asyncio.TimeoutError:
+
+    result = aerial.stop(
+        client=client,
+        timeout=30.0
+    )
+
+    if result is False:
         pass
-    for f in list(client.friends.values()):
-        await f.remove()
-    for f in list(client.pending_friends.values()):
-        await f.decline()
-    try:
-        await asyncio.wait_for(client.close(), timeout=30.0)
-    except:
-        pass
+
     available[client.name] = client
     owner.pop(ownerid)
-    shutdowntask = shutdowntasks.get(client, None)
-    if shutdowntask is not None:
-        shutdowntask.cancel()
-    startuptask = startuptasks.get(client, None)
-    if startuptask is not None:
-        startuptask.cancel()
+
     await messages[client].edit(
         embed=discord.Embed(
             title="<:Offline:719321200098017330> Bot Offline",
@@ -174,10 +115,12 @@ async def stop_bot(client: fortnitepy.Client, ownerid: int, text: str = None, de
             color=0x747f8d
         )
     )
+
     hook.send(":heavy_minus_sign: " + dclient.get_user(ownerid).mention + " is no longer using the bot")
 
 
 async def start_bot(member: discord.Member, time: int):
+
     try:
         message = await member.send(
             embed=discord.Embed(
@@ -186,8 +129,10 @@ async def start_bot(member: discord.Member, time: int):
                 color=0x7289da
             )
         )
+
     except discord.Forbidden:
         return
+
     if member.id in list(owner.keys()):
         await message.edit(
             embed=discord.Embed(
@@ -197,6 +142,7 @@ async def start_bot(member: discord.Member, time: int):
             delete_after=3
         )
         return
+
     else:
         name = random.choice(list(available.keys()))
         client = available[name]
@@ -208,6 +154,7 @@ async def start_bot(member: discord.Member, time: int):
     async def event_friend_request(friend: fortnitepy.PendingFriend):
         if friend.direction != "INBOUND" or member.id not in list(owner.keys()):
             return
+
         rmsg = await message.channel.send(
             embed=discord.Embed(
                 title="<:FriendRequest:719042256849338429> Friend Request from " + friend.display_name,
@@ -215,17 +162,21 @@ async def start_bot(member: discord.Member, time: int):
                 description="<:Accept:719047548219949136> Accept    <:Reject:719047548819472446> Reject"
             )
         )
+
         await rmsg.add_reaction(":Accept:719047548219949136")
         await rmsg.add_reaction(":Reject:719047548819472446")
 
         def check(reaction, user):
+
             if str(reaction.emoji) in ["<:Accept:719047548219949136>", "<:Reject:719047548819472446>"] and not user.bot:
                 return True
+
             else:
                 return False
 
         try:
             reaction, user = await dclient.wait_for("reaction_add", timeout=60.0, check=check)
+
         except asyncio.TimeoutError:
             await friend.decline()
             await rmsg.edit(
@@ -236,8 +187,11 @@ async def start_bot(member: discord.Member, time: int):
                     color=0xf24949
                 )
             )
+
         else:
+
             if str(reaction.emoji) == "<:Accept:719047548219949136>":
+                await friend.accept()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -246,8 +200,9 @@ async def start_bot(member: discord.Member, time: int):
                         color=0x43b581
                     )
                 )
-                await friend.accept()
+
             elif str(reaction.emoji) == "<:Reject:719047548819472446>":
+                await friend.decline()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -256,12 +211,13 @@ async def start_bot(member: discord.Member, time: int):
                         color=0xf24949
                     )
                 )
-                await friend.decline()
 
     @client.event
     async def event_party_invite(invitation: fortnitepy.ReceivedPartyInvitation):
+
         if member.id not in list(owner.keys()):
             return
+
         rmsg = await message.channel.send(
             embed=discord.Embed(
                 title="<:PartyInvite:719198827281645630> Party Invite from " + invitation.sender.display_name,
@@ -269,17 +225,23 @@ async def start_bot(member: discord.Member, time: int):
                 description="<:Accept:719047548219949136> Accept    <:Reject:719047548819472446> Reject"
             )
         )
+
         await rmsg.add_reaction(":Accept:719047548219949136")
         await rmsg.add_reaction(":Reject:719047548819472446")
 
         def check(reaction, user):
+
             if str(reaction.emoji) in ["<:Accept:719047548219949136>", "<:Reject:719047548819472446>"] and not user.bot:
                 return True
+
             else:
                 return False
+
         try:
             reaction, user = await dclient.wait_for("reaction_add", timeout=60.0, check=check)
+
         except asyncio.TimeoutError:
+            await invitation.decline()
             await rmsg.edit(
                 delete_after=1,
                 embed=discord.Embed(
@@ -288,9 +250,10 @@ async def start_bot(member: discord.Member, time: int):
                     color=0xf24949
                 )
             )
-            await invitation.decline()
+
         else:
             if str(reaction.emoji) == "<:Accept:719047548219949136>":
+                await invitation.accept()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -299,8 +262,9 @@ async def start_bot(member: discord.Member, time: int):
                         color=0x43b581
                     )
                 )
-                await invitation.accept()
+
             elif str(reaction.emoji) == "<:Reject:719047548819472446>":
+                await invitation.decline()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -309,57 +273,42 @@ async def start_bot(member: discord.Member, time: int):
                         color=0xf24949
                     )
                 )
-                await invitation.decline()
 
     @client.event
     async def event_close():
-        del event_friend_request
-        del event_party_invite
 
-    loop.create_task(client.start())
+        del client.event_friend_request
+        del client.event_party_invite
 
-    try:
-        await asyncio.wait_for(client.wait_until_ready(), timeout=30.0)
-    except asyncio.TimeoutError:
+    started = await aerial.start(
+        client=client,
+        timeout=30.0
+    )
+
+    if not started:
         await stop_bot(client, member.id, "An error occured while starting the bot. Please try again.", 0)
         return
-    for f in list(client.friends.values()):
-        await f.remove()
-    for f in list(client.pending_friends.values()):
-        await f.decline()
-    await client.party.me.edit_and_keep(
-        partial(client.party.me.set_outfit, "CID_565_Athena_Commando_F_RockClimber"),
-        partial(client.party.me.set_backpack, "BID_122_HalloweenTomato"),
-        partial(client.party.me.set_banner, icon="otherbanner31", color="defaultcolor3", season_level=1337)
-    )
-    client.set_avatar(
-        fortnitepy.Avatar(
-            asset="CID_565_Athena_Commando_F_RockClimber",
-            background_colors=[
-                "7c0dc8",
-                "b521cc",
-                "ed34d0"
-            ]
-        )
-    )
+
     message2 = await message.channel.send(
         embed=discord.Embed(
             title="<:Online:719038976677380138> " + client.user.display_name,
             type="rich",
             color=0xfc5fe2
         ).set_thumbnail(
-            url=get_cosmetic_by_id(client.party.me.outfit)['icons']['icon']
+            url=aerial.cosmetic(client.party.me.outfit, "AthenaCharacter")['icons']['icon']
         ).add_field(
             name="Discord Server",
             value="https://discord.gg/r7DHHfY",
             inline=True
         )
     )
+
     await message.delete()
     messages[client] = message2
     hook.send(":heavy_plus_sign: " + member.mention + " is now using the bot (" + client.user.display_name + ")")
     await message.channel.send(content="Documentation is available here: **<https://aerial.now.sh/>**", delete_after=120)
-    shutdowntasks[client] = loop.create_task(
+
+    loop.create_task(
         stop_bot(
             client,
             member.id,
@@ -370,14 +319,20 @@ async def start_bot(member: discord.Member, time: int):
 
 
 async def parse_command(message: discord.Message):
+
     if type(message.channel) != discord.DMChannel or message.author.bot:
         return
-    msg = message.content.split(" ")
-    if message.author.id not in list(owner.keys()):
+
+    elif message.author.id not in list(owner.keys()):
         return
+
+    msg = message.content.split(" ")
+
     client = owner[message.author.id]
+
     if msg[0].lower() == "stop" or msg[0].lower() == "logout":
         await stop_bot(client, message.author.id, "You requested the bot to shutdown.", 0)
+
     elif msg[0].lower() == "restart" or msg[0].lower() == "reboot":
         restartmsg = await message.channel.send(content="<a:Queue:720808283740569620> Restarting...")
         try:
@@ -440,44 +395,33 @@ async def parse_command(message: discord.Message):
             return
         elif msg[1].lower() == "outfit" or msg[1].lower() == "skin":
             msg[2] = " ".join(msg[2:])
-            if msg[2].startswith("CID_"):
-                await client.party.me.edit_and_keep(partial(client.party.me.set_outfit, msg[2]))
-                await message.channel.send("<:Accept:719047548219949136> Set Outfit to " + msg[2], delete_after=10)
-                await refresh_message(client)
+            cosmetic = aerial.cosmetic(msg[2], "AthenaCharacter")
+            if cosmetic is None:
+                await message.channel.send("<:Reject:719047548819472446> Cannot Find Outfit " + msg[2], delete_after=10)
             else:
-                cosmetic = get_cosmetic(name=msg[2], backendType="AthenaCharacter")
-                if list(cosmetic.keys()) == ['error']:
-                    await message.channel.send("<:Reject:719047548819472446> Cannot Find Outfit " + msg[2], delete_after=10)
-                else:
-                    await client.party.me.edit_and_keep(partial(client.party.me.set_outfit, cosmetic['id']))
-                    await message.channel.send("<:Accept:719047548219949136> Set Outfit to " + cosmetic['name'], delete_after=10)
-                    await refresh_message(client)
+                await client.party.me.edit_and_keep(partial(client.party.me.set_outfit, cosmetic['id']))
+                await message.channel.send("<:Accept:719047548219949136> Set Outfit to " + cosmetic['name'], delete_after=10)
+                await refresh_message(client)
         elif msg[1].lower() == "backbling" or msg[1].lower() == "backpack":
             msg[2] = " ".join(msg[2:])
-            if msg[2].startswith("BID_"):
-                await client.party.me.edit_and_keep(partial(client.party.me.set_backpack, msg[2]))
-                await message.channel.send("<:Accept:719047548219949136> Set Back Bling to " + msg[2], delete_after=10)
-            elif msg[2].lower() == "none":
+            if msg[2].lower() == "none":
                 await client.party.me.edit_and_keep(partial(client.party.me.clear_backpack))
                 await message.channel.send("<:Accept:719047548219949136> Set Back Bling to None", delete_after=10)
             else:
-                cosmetic = get_cosmetic(name=msg[2], backendType="AthenaBackpack")
-                if list(cosmetic.keys()) == ['error']:
+                cosmetic = aerial.cosmetic(msg[2], "AthenaBackpack")
+                if cosmetic is None:
                     await message.channel.send("<:Reject:719047548819472446> Cannot Find Back Bling " + msg[2], delete_after=10)
                 else:
                     await client.party.me.edit_and_keep(partial(client.party.me.set_backpack, cosmetic['id']))
                     await message.channel.send("<:Accept:719047548219949136> Set Back Bling to " + cosmetic['name'], delete_after=10)
         elif msg[1].lower() == "emote" or msg[1].lower() == "dance":
             msg[2] = " ".join(msg[2:])
-            if msg[2].startswith("EID_"):
-                await client.party.me.set_emote(msg[2])
-                await message.channel.send("<:Accept:719047548219949136> Set Emote to " + msg[2], delete_after=10)
-            elif msg[2].lower() == "none":
+            if msg[2].lower() == "none":
                 await client.party.me.clear_emote()
                 await message.channel.send("<:Accept:719047548219949136> Set Emote to None", delete_after=10)
             else:
-                cosmetic = get_cosmetic(name=msg[2], backendType="AthenaDance")
-                if list(cosmetic.keys()) == ['error']:
+                cosmetic = aerial.cosmetic(msg[2], "AthenaDance")
+                if cosmetic is None:
                     await message.channel.send("<:Reject:719047548819472446> Cannot Find Emote " + msg[2], delete_after=10)
                 else:
                     await client.party.me.clear_emote()
@@ -485,16 +429,12 @@ async def parse_command(message: discord.Message):
                     await message.channel.send("<:Accept:719047548219949136> Set Emote to " + cosmetic['name'], delete_after=10)
         elif msg[1].lower() == "harvesting_tool" or msg[1].lower() == "harvestingtool" or msg[1].lower() == "pickaxe":
             msg[2] = " ".join(msg[2:])
-            if msg[2].startswith("Pickaxe_ID"):
-                await client.party.me.edit_and_keep(partial(client.party.me.set_pickaxe, msg[2]))
-                await message.channel.send("<:Accept:719047548219949136> Set Harvesting Tool to " + msg[2], delete_after=10)
+            cosmetic = aerial.cosmetic(msg[2], "AthenaPickaxe")
+            if cosmetic is None:
+                await message.channel.send("<:Reject:719047548819472446> Cannot Find Harvesting Tool " + msg[2], delete_after=10)
             else:
-                cosmetic = get_cosmetic(name=msg[2], backendType="AthenaPickaxe")
-                if list(cosmetic.keys()) == ['error']:
-                    await message.channel.send("<:Reject:719047548819472446> Cannot Find Harvesting Tool " + msg[2], delete_after=10)
-                else:
-                    await client.party.me.edit_and_keep(partial(client.party.me.set_pickaxe, cosmetic['id']))
-                    await message.channel.send("<:Accept:719047548219949136> Set Harvesting Tool to " + cosmetic['name'], delete_after=10)
+                await client.party.me.edit_and_keep(partial(client.party.me.set_pickaxe, cosmetic['id']))
+                await message.channel.send("<:Accept:719047548219949136> Set Harvesting Tool to " + cosmetic['name'], delete_after=10)
         elif msg[1].lower() == "banner" and len(msg) == 4:
             if msg[2].lower() == "design" or msg[2].lower() == "icon":
                 await client.party.me.edit_and_keep(partial(client.party.me.set_banner, icon=msg[3], color=client.party.me.banner[1], season_level=client.party.me.banner[2]))
@@ -661,13 +601,13 @@ async def parse_command(message: discord.Message):
         if len(msg) < 2:
             return
         elif msg[1].lower() == "outfit" or msg[1].lower() == "skin":
-            cosm = get_cosmetic_by_id(client.party.me.outfit)
+            cosm = aerial.cosmetic(client.party.me.outfit, "AthenaCharacter")
         elif msg[1].lower() == "backbling" or msg[1].lower() == "backpack":
-            cosm = get_cosmetic_by_id(client.party.me.backpack)
+            cosm = aerial.cosmetic(client.party.me.backpack, "AthenaBackpack")
         elif msg[1].lower() == "harvesting_tool" or msg[1].lower() == "harvestingtool" or msg[1].lower() == "pickaxe":
-            cosm = get_cosmetic_by_id(client.party.me.pickaxe)
-        elif msg[1].startswith(("CID", "BID", "Pickaxe_ID")):
-            cosm = get_cosmetic_by_id(msg[1])
+            cosm = aerial.cosmetic(client.party.me.pickaxe, "AthenaPickaxe")
+        else:
+            cosm = aerial.cosmetic(" ".join(msg[1:]))
         if cosm is None:
             await message.channel.send("<:Reject:719047548819472446> Cannot Find Cosmetic " + msg[1])
             return
@@ -740,7 +680,7 @@ async def on_message(message: discord.Message):
         if "start" in message.content.lower():
             try:
                 await message.delete()
-            except:
+            except discord.Forbidden:
                 pass
             await start_bot(message.author, 5400)
         else:
@@ -763,10 +703,10 @@ async def create(ctx):
 @dclient.command(name="kill", aliases=["stop", "end"])
 async def kill(ctx):
     if ctx.author.id not in list(owner.keys()):
-        await ctx.send(":x: No Active Session Found!")
+        await ctx.send(ctx.author.mention + " :x: No Active Session Found!")
         return
     try:
-        await ctx.send(ctx.author.mention + "Attempting to kill session... (Timeout of 60 seconds)")
+        await ctx.send(ctx.author.mention + " Attempting to kill session... (Timeout of 60 seconds)")
         await asyncio.wait_for(
             stop_bot(
                 owner[ctx.author.id],
@@ -776,26 +716,22 @@ async def kill(ctx):
             ), timeout=60.0)
         await ctx.send(":white_check_mark: Killed Session!")
     except asyncio.TimeoutError:
-        await ctx.send(ctx.author.mention + ":x: Could not kill session. Maybe try again? (TimeoutError)")
+        await ctx.send(ctx.author.mention + " :x: Could not kill session. Maybe try again? (TimeoutError)")
     except:
-        await ctx.send(ctx.author.mention + ":x: Could not kill session. Maybe try again? (UnknownError)")
-
+        await ctx.send(ctx.author.mention + " :x: Could not kill session. Maybe try again? (UnknownError)")
 
 
 for a in accounts:
-    auth = fortnitepy.AdvancedAuth(
-        email=accounts[a]['Email'],
-        password=accounts[a]['Password'],
-        account_id=accounts[a]['Account ID'],
-        device_id=accounts[a]['Device ID'],
-        secret=accounts[a]['Secret']
+    client = aerial.DisposableClient(
+        name=a,
+        details={
+            "email": accounts[a]['Email'],
+            "password": accounts[a]['Password'],
+            "account_id": accounts[a]['Account ID'],
+            "device_id": accounts[a]['Device ID'],
+            "secret": accounts[a]['Secret']
+        }
     )
-    client = fortnitepy.Client(
-        auth=auth,
-        platform=fortnitepy.Platform.MAC,
-        connector=aiohttp.TCPConnector(limit=None)
-    )
-    client.name = a
     clients[a] = client
     available[a] = client
 
