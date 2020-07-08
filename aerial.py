@@ -82,6 +82,19 @@ class DisposableClient(fortnitepy.Client):
             auth=fortnitepy.AdvancedAuth(**details)
         )
 
+class SelfHostClient(fortnitepy.Client):
+
+    def __init__(self, config: dict):
+        self.config = config
+
+        super().__init__(
+            platform=config.get("Platform", "WIN"),
+            connector=TCPConnector(limit=None),
+            auth=fortnitepy.AdvancedAuth(
+                
+            )
+        )
+
 
 class PublicClient(fortnitepy.Client):
 
@@ -100,17 +113,17 @@ class PublicClient(fortnitepy.Client):
 
     async def refresh_status(self, member: fortnitepy.PartyMember = None):
         if self.party.member_count < 4:
-            await self.set_status(f"🟢 {self.party.member_count}/16 | {len(self.friends)} Users")
+            await self.set_status(f"🍀 {self.party.member_count}/16 | {len(self.friends)} Users")
         elif self.party.member_count < 8:
-            await self.set_status(f"🟡 {self.party.member_count}/16 | {len(self.friends)} Users")
+            await self.set_status(f"🔶 {self.party.member_count}/16 | {len(self.friends)} Users")
         else:
-            await self.set_status(f"🔴 {self.party.member_count}/16 | {len(self.friends)} Users")
+            await self.set_status(f"🛑 {self.party.member_count}/16 | {len(self.friends)} Users")
 
 
     async def event_ready(self):
         await self.refresh_status()
         for f in list(self.pending_friends.values()):
-            if f.direction == "INBOUND":
+            if type(f) == fortnitepy.IncomingPendingFriend:
                 await f.accept()
 
         await self.party.me.edit_and_keep(
@@ -148,7 +161,7 @@ class PublicClient(fortnitepy.Client):
         await invitation.decline()
         await invitation.sender.invite()
 
-    async def event_friend_request(self, request: fortnitepy.PendingFriend):
+    async def event_friend_request(self, request: fortnitepy.IncomingPendingFriend):
         if request.direction == "INBOUND":
             await request.accept()
 

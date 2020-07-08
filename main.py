@@ -151,8 +151,8 @@ async def start_bot(member: discord.Member, time: int):
         messages[client] = message
 
     @client.event
-    async def event_friend_request(friend: fortnitepy.PendingFriend):
-        if friend.direction != "INBOUND" or member.id not in list(owner.keys()):
+    async def event_friend_request(friend: fortnitepy.IncomingPendingFriend):
+        if member.id not in list(owner.keys()):
             return
 
         rmsg = await message.channel.send(
@@ -178,7 +178,6 @@ async def start_bot(member: discord.Member, time: int):
             reaction, user = await dclient.wait_for("reaction_add", timeout=60.0, check=check)
 
         except asyncio.TimeoutError:
-            await friend.decline()
             await rmsg.edit(
                 delete_after=1,
                 embed=discord.Embed(
@@ -187,11 +186,10 @@ async def start_bot(member: discord.Member, time: int):
                     color=0xf24949
                 )
             )
+            await friend.decline()
 
         else:
-
             if str(reaction.emoji) == "<:Accept:719047548219949136>":
-                await friend.accept()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -200,9 +198,9 @@ async def start_bot(member: discord.Member, time: int):
                         color=0x43b581
                     )
                 )
+                await friend.accept()
 
             elif str(reaction.emoji) == "<:Reject:719047548819472446>":
-                await friend.decline()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -211,6 +209,7 @@ async def start_bot(member: discord.Member, time: int):
                         color=0xf24949
                     )
                 )
+                await friend.decline()
 
     @client.event
     async def event_party_invite(invitation: fortnitepy.ReceivedPartyInvitation):
@@ -241,7 +240,6 @@ async def start_bot(member: discord.Member, time: int):
             reaction, user = await dclient.wait_for("reaction_add", timeout=60.0, check=check)
 
         except asyncio.TimeoutError:
-            await invitation.decline()
             await rmsg.edit(
                 delete_after=1,
                 embed=discord.Embed(
@@ -250,10 +248,10 @@ async def start_bot(member: discord.Member, time: int):
                     color=0xf24949
                 )
             )
+            await invitation.decline()
 
         else:
             if str(reaction.emoji) == "<:Accept:719047548219949136>":
-                await invitation.accept()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -262,9 +260,9 @@ async def start_bot(member: discord.Member, time: int):
                         color=0x43b581
                     )
                 )
+                await invitation.accept()
 
             elif str(reaction.emoji) == "<:Reject:719047548819472446>":
-                await invitation.decline()
                 await rmsg.edit(
                     delete_after=1,
                     embed=discord.Embed(
@@ -273,6 +271,7 @@ async def start_bot(member: discord.Member, time: int):
                         color=0xf24949
                     )
                 )
+                await invitation.decline()
 
     @client.event
     async def event_close():
